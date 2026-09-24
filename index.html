@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      const pieces = [
+        "wP",
+        "wR",
+        "wN",
+        "wB",
+        "wQ",
+        "wK",
+        "bP",
+        "bR",
+        "bN",
+        "bB",
+        "bQ",
+        "bK",
+      ];
+      const base =
+        "{{ url_for('static', filename='img/chesspieces/wikipedia/') }}";
+      pieces.forEach((p) => {
+        const img = new Image();
+        img.src = base + p + ".png";
+      });
+    </script>
+    <link
+      rel="preload"
+      as="image"
+      href="{{ url_for('static', filename='img/background1.jpg') }}"
+    />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLMChess</title>
+    <link
+      rel="stylesheet"
+      href="{{url_for('static', filename='css/chessboard-1.0.0.min.css')}}"
+    />
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <script src="{{url_for('static', filename='js/chessboard-1.0.0.min.js')}}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+    <style>
+      /* --- Page layout --- */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        background: url("{{ url_for('static', filename='img/background1.jpg') }}")
+          no-repeat center center fixed;
+        background-size: cover;
+        font-family: Arial, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #input-container {
+        display: none;
+        margin: 16px 0;
+        text-align: center;
+        position: relative;
+        z-index: 20;
+        width: 95%;
+        max-width: 1100px;
+        box-sizing: border-box;
+      }
+
+      .game-container {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 20px;
+        width: 95%;
+        max-width: 1300px;
+      }
+
+      /* Make chessboard bigger */
+      #board1 {
+        width: 90vmin;
+        max-width: 90vw;
+        max-height: 90vw;
+        touch-action: manipulation;
+      }
+
+      /* Sidebar (logs + scoreboard) */
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 220px; /* compact sidebar */
+        flex-shrink: 0; /* prevent shrinking */
+      }
+
+      #log {
+        height: 180px;
+        border: 1px solid black;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding: 5px;
+        background: white;
+        font-size: 13px;
+      }
+
+      #scoreboard {
+        border: 1px solid black;
+        padding: 8px;
+        background: #fff;
+        font-size: 13px;
+      }
+
+      #scoreboard h3 {
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        text-align: center;
+      }
+
+      #waiting-message {
+        margin-top: 10px;
+        font-style: italic;
+        display: none;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      /* Mobile adjustments */
+      @media (max-width: 800px) {
+        .game-container {
+          flex-direction: column;
+          align-items: center;
+        }
+        .sidebar {
+          width: 100%;
+          flex-direction: row;
+          justify-content: space-between;
+        }
+        #log,
+        #scoreboard {
+          width: 48%;
+          height: auto;
+        }
+        #board1 {
+          width: 90vw;
+        }
+      }
+
+      /* Input styles */
+      #api-key-input {
+        width: 60%;
+        max-width: 300px;
+        padding: 8px;
+        font-size: 16px;
+        margin-right: 8px;
+        box-sizing: border-box;
+      }
+      #model-selector {
+        padding: 8px;
+        font-size: 16px;
+        margin-right: 8px;
+      }
+      #start-button {
+        padding: 10px 16px;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 6px;
+        border: none;
+        background: #1e90ff;
+        color: white;
+      }
+      /*.square-legal {*/
+      /*  box-shadow: inset 0 0 0 1000px rgba(0, 255, 0, 0.35); !* green overlay *!*/
+      /*}*/
+      /*.square-legal-capture {*/
+      /*  box-shadow: inset 0 0 0 1000px rgba(255, 0, 0, 0.35); !* red overlay *!*/
+      /*}*/
+
+      .square-legal {
+        position: relative;
+      }
+      .square-legal::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 30%;
+        height: 30%;
+        background: rgba(0, 255, 0, 0.5);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      .square-legal-capture {
+        position: relative;
+      }
+      .square-legal-capture::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 80%;
+        height: 80%;
+        border: 3px solid rgba(255, 0, 0, 0.7);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+</style>
+    </style>
+  </head>
+  <body>
+    <div id="input-container">
+      <input type="text" id="api-key-input" placeholder="OpenAI Key" />
+      <select id="model-selector">
+        <option value="gpt-6-luna">gpt-6-luna</option>
+      </select>
+    </div>
+
+    <div class="game-container">
+      <!-- Chessboard -->
+      <div id="board1"></div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div id="log"></div>
+        <div id="scoreboard">
+          <h3>Scoreboard</h3>
+          <div><b>White Score:</b> <span id="white-score">0</span></div>
+          <div><b>Absolute Eval:</b> <span id="absolute-score">0</span></div>
+          <div><b>Timer:</b> <span id="timer">02:00</span></div>
+          <div
+            id="timeout-actions"
+            style="display: none; margin-top: 6px; text-align: center"
+          >
+            <button id="continue-button">Continue</button>
+            <button id="reset-button">Reset</button>
+          </div>
+        </div>
+        <button id="start-button" type="button">Start</button>
+        <div id="waiting-message" style="color: white">
+          Waiting for the LLM to respond...
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var gameTimer,
+        timeRemaining = 120,
+        timerExpired = false;
+      var gameStarted = false;
+      var selectedModel = document.getElementById("model-selector").value;
+
+      function updateScoreboard(accumulative, absolute) {
+        document.getElementById("white-score").textContent = accumulative;
+        document.getElementById("absolute-score").textContent = absolute;
+      }
+
+      document
+        .getElementById("model-selector")
+        .addEventListener("change", function () {
+          selectedModel = this.value;
+        });
+
+      function updatePositionWithLoad(chess, source, target, piece) {
+        chess.remove(source);
+        chess.put(piece, target);
+        var updatedFen = chess.fen();
+        chess.load(updatedFen);
+      }
+
+      var img_url =
+        "{{ url_for('static', filename='img/chesspieces/wikipedia/') }}";
+      var board1,
+        game = new Chess();
+      var config = {
+        draggable: true,
+        position: "start",
+        onDragStart: onDragStart,
+        onDrop: onDrop,
+        onSnapEnd: onSnapEnd,
+        pieceTheme: img_url + "{piece}.png",
+      };
+      board1 = ChessBoard("board1", config);
+
+      function onDragStart(source, piece, position, orientation) {
+        if (!gameStarted) return false;
+        if (game.in_checkmate() || game.in_draw()) return false;
+        if (
+          (game.turn() === "w" && piece.search(/^b/) !== -1) ||
+          (game.turn() === "b" && piece.search(/^w/) !== -1)
+        ) {
+          return false;
+        }
+        $('#board1 .square-55d63').removeClass('square-legal square-legal-capture');
+        var moves = game.moves({
+          square: source,
+          verbose: true
+        });
+        if (moves.length === 0) return false;
+        for (var i = 0; i < moves.length; i++) {
+          var targetSquare = moves[i].to;
+          var squareEl = $('#board1 .square-' + targetSquare);
+
+          if (moves[i].flags.includes('c')) {
+            squareEl.addClass('square-legal-capture'); // red highlight if capture
+          } else {
+            squareEl.addClass('square-legal'); // green highlight if normal
+          }
+        }
+        return true;
+      }
+
+      function onDrop(source, target) {
+        $('#board1 .square-55d63').removeClass('square-legal square-legal-capture');
+        var move = game.move({ from: source, to: target, promotion: "q" });
+        if (move === null) return "snapback";
+
+        // Update scoreboard for White move
+        $.post(
+          "/move",
+          {
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion,
+            status: "eval-only",
+            pgn: game.pgn(),
+            san: move.san,
+          },
+          function (response) {
+            if (!response.error) {
+              updateScoreboard(response.accumulative, response.absolute);
+            }
+          }
+        );
+
+        updateStatus();
+        if (game.game_over()) return;
+        var sanMove = game.history({ verbose: false }).slice(-1)[0];
+        sendMoveToServer(move, "move", sanMove);
+      }
+
+      function onSnapEnd() {
+        $('#board1 .square-55d63').removeClass('square-legal square-legal-capture');
+        board1.position(game.fen());
+      }
+
+      function updateStatus() {
+        var status = "";
+        var moveColor = game.turn() === "w" ? "White" : "Black";
+        if (game.in_checkmate())
+          status = "Game over, " + moveColor + " is in checkmate.";
+        else if (game.in_draw()) status = "Game over, drawn position";
+        else if (game.in_stalemate()) status = "Game over, stalemate";
+        else if (game.in_threefold_repetition())
+          status = "Game over, threefold repetition";
+        else if (game.insufficient_material())
+          status = "Game over, insufficient material";
+        else if (game.half_moves >= 100) status = "Game over, 50-move rule";
+        if (status !== "") {
+          displayLogMessage(status, "error");
+          document.getElementById("timeout-actions").style.display = "block";
+          document.getElementById("continue-button").style.display = "none"; // no continue for natural game end
+        }
+      }
+
+      function startGame() {
+        whiteScore = 0;
+        document.getElementById("white-score").textContent = "0";
+        var apiKey = document.getElementById("api-key-input").value;
+        var model = selectedModel;
+        $.post(
+          "/check-api-key",
+          { api_key: apiKey, model: model },
+          function (response) {
+            if (response.status === "success") {
+              $.post(
+                "/set-api-key",
+                { api_key: apiKey, model: model },
+                function (response) {
+                  if (response.status === "success") {
+                    $.getJSON("/new-session", function (response) {
+                      if (response.session_id) {
+                        gameStarted = true;
+                        startCountdown();
+                        document.getElementById("start-button").innerHTML =
+                          "End";
+                      } else {
+                        alert("Failed to start the game");
+                      }
+                    });
+                  } else {
+                    alert("Failed to set the API key and model");
+                  }
+                }
+              );
+            } else {
+              alert("Invalid API key. Please check your OpenAI API key.");
+            }
+          }
+        );
+      }
+
+      function startCountdown() {
+        timeRemaining = 120;
+        timerExpired = false;
+        updateTimerDisplay();
+
+        gameTimer = setInterval(function () {
+          timeRemaining--;
+          updateTimerDisplay();
+          if (timeRemaining <= 0) {
+            clearInterval(gameTimer);
+            timerExpired = true;
+            onTimerExpired();
+          }
+        }, 1000);
+      }
+
+      function updateTimerDisplay() {
+        var minutes = Math.floor(timeRemaining / 60);
+        var seconds = timeRemaining % 60;
+        document.getElementById("timer").textContent =
+          String(minutes).padStart(2, "0") +
+          ":" +
+          String(seconds).padStart(2, "0");
+      }
+
+      function onTimerExpired() {
+        displayLogMessage("Time is up! Choose to continue or reset.", "error");
+        document.getElementById("timeout-actions").style.display = "block";
+        document.getElementById("continue-button").style.display =
+          "inline-block";
+      }
+
+      document
+        .getElementById("continue-button")
+        .addEventListener("click", function () {
+          timerExpired = false;
+          document.getElementById("timeout-actions").style.display = "none";
+          displayLogMessage("Game continues beyond timer.", "success");
+        });
+
+      document
+        .getElementById("reset-button")
+        .addEventListener("click", function () {
+          clearInterval(gameTimer);
+          document.getElementById("timeout-actions").style.display = "none";
+          document.getElementById("timer").textContent = "02:00";
+          $.getJSON("/delete-session", function (response) {
+            if (response.status === "success") {
+              location.reload();
+            } else {
+              alert("Failed to delete the session");
+            }
+          });
+        });
+
+      function canMove() {
+        return gameStarted && !timerExpired;
+      }
+
+      // Override move validation
+      function onDragStart(source, piece, position, orientation) {
+        if (!canMove()) return false;
+        if (game.in_checkmate() || game.in_draw()) return false;
+        if (
+                (game.turn() === "w" && piece.search(/^b/) !== -1) ||
+                (game.turn() === "b" && piece.search(/^w/) !== -1)
+        )
+          $('#board1 .square-55d63').removeClass('square-legal square-legal-capture');
+        var moves = game.moves({
+          square: source,
+          verbose: true
+        });
+
+        if (moves.length === 0) return;
+
+        for (var i = 0; i < moves.length; i++) {
+          var targetSquare = moves[i].to;
+          var squareEl = $('#board1 .square-' + targetSquare);
+
+          if (moves[i].flags.includes('c')) {
+            squareEl.addClass('square-legal-capture'); // red if capture
+          } else {
+            squareEl.addClass('square-legal'); // green if empty
+          }
+        }
+        return true;
+      }
+
+      function endGame() {
+        clearInterval(gameTimer);
+        timerExpired = true; // disable moves
+        document.getElementById("timeout-actions").style.display = "block";
+        document.getElementById("continue-button").style.display = "none";
+        displayLogMessage(
+          "Game ended by player. Choose to continue or reset.",
+          "error"
+        );
+      }
+
+      window.addEventListener("beforeunload", function () {
+        if (gameStarted) {
+          navigator.sendBeacon("/delete-session");
+        }
+      });
+
+      function sendMoveToServer(move, status, sanMove) {
+        document.getElementById("waiting-message").style.display = "block";
+        var pgnData = game.pgn();
+        $.post(
+          "/move",
+          {
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion,
+            status: status,
+            pgn: pgnData,
+            san: sanMove,
+          },
+          function (response) {
+            document.getElementById("waiting-message").style.display = "none";
+            if (response.error) {
+              displayLogMessage("Error: " + response.error, "error");
+            } else {
+              var opponentMove = response.move;
+              const chess = new Chess(game.fen());
+              var opponentMoveObj = chess.move(opponentMove);
+              if (opponentMoveObj === null) {
+                displayLogMessage(
+                  "LLM responded with illegal move: " + opponentMove,
+                  "error"
+                );
+                sendMoveToServer(move, "repeat", sanMove);
+                return;
+              }
+              displayLogMessage(
+                "LLM responded with move: " + opponentMove,
+                "success"
+              );
+              game.load(chess.fen());
+              board1.position(chess.fen());
+              updateScoreboard(response.accumulative, response.absolute);
+              updateStatus();
+            }
+          }
+        ).fail(function (jqXHR, textStatus, errorThrown) {
+          document.getElementById("waiting-message").style.display = "none";
+          displayLogMessage(
+            "Error: Failed to send move. " + textStatus + " - " + errorThrown,
+            "error"
+          );
+        });
+      }
+
+      function displayLogMessage(message, type = "default") {
+        var logElement = document.getElementById("log");
+        var messageElement = document.createElement("div");
+        switch (type) {
+          case "error":
+            messageElement.style.color = "red";
+            break;
+          case "success":
+            messageElement.style.color = "green";
+            break;
+          default:
+            messageElement.style.color = "black";
+        }
+        messageElement.textContent = message;
+        logElement.appendChild(messageElement);
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      /* --- Attach click + touch handlers for mobile --- */
+      (function attachStartHandlers() {
+        var startBtn = document.getElementById("start-button");
+        var invoked = false;
+        function handler(e) {
+          e.preventDefault();
+          if (invoked) return;
+          invoked = true;
+          setTimeout(function () {
+            invoked = false;
+          }, 500);
+          if (gameStarted) {
+            endGame();
+          } else {
+            startGame();
+          }
+        }
+        startBtn.addEventListener("touchend", handler, { passive: false });
+        startBtn.addEventListener("click", handler);
+      })();
+      document.addEventListener("contextmenu", function (e) {
+        if (e.target.tagName === "IMG") {
+          e.preventDefault();
+        }
+      });
+
+      // Prevent page scrolling while dragging chess pieces
+      const board = document.getElementById("board1");
+
+      board.addEventListener("touchstart", function (e) {
+        if (e.target.tagName === "IMG") {
+          e.preventDefault(); // stop scroll start
+        }
+      }, { passive: false });
+
+      board.addEventListener("touchmove", function (e) {
+        if (e.target.tagName === "IMG") {
+          e.preventDefault(); // stop vertical scroll during drag
+        }
+      }, { passive: false });
+    </script>
+  </body>
+</html>

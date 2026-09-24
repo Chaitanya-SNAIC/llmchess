@@ -1,0 +1,23 @@
+[project]
+name = "llmchess"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Chaitanya Lakhchaura", email = "90706514+ZenithFlux@users.noreply.github.com" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    "chess>=1.11.2",
+    "flask>=3.0.3",
+    "flask-cors>=5.0.0",
+    "openai>=2.2.0",
+    "stockfish>=4.0.2",
+]
+
+[project.scripts]
+llmchess = "llmchess:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
