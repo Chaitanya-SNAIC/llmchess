@@ -154,7 +154,14 @@ class ChessEngine:
 
         # --- Handle illegal move retry ---
         if status == "repeat":
+            # The page hides illegal moves from players, so record them here. The
+            # rejected move is the model's reply stored by the previous /move call.
+            illegal_move = self.extract_move(self.messages[-1]["content"])
             if self.retry_count >= 3:
+                logger.info(
+                    "Illegal move by model: %s, retries used up, Stockfish plays instead session=%s",
+                    illegal_move, self.session_id,
+                )
                 # Stockfish fallback
                 self.stockfish.set_fen_position(self.board.fen())
                 uci_move = self.stockfish.get_best_move()
@@ -169,6 +176,10 @@ class ChessEngine:
                 else:
                     raise ValueError("Stockfish failed to return a move")
             self.retry_count += 1
+            logger.info(
+                "Illegal move by model: %s, retry %d/3 session=%s",
+                illegal_move, self.retry_count, self.session_id,
+            )
             self.messages.append({
                 "role": "system",
                 "content": "The move you suggested was illegal on the current board. Please suggest a legal move."

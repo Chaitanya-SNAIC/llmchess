@@ -30,7 +30,7 @@
     />
 
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LLMChess</title>
+    <title>AI Chess</title>
     <link
       rel="stylesheet"
       href="{{url_for('static', filename='css/chessboard-1.0.0.min.css')}}"
@@ -240,7 +240,7 @@
         </div>
         <button id="start-button" type="button">Start</button>
         <div id="waiting-message" style="color: white">
-          Waiting for the LLM to respond...
+          AI is thinking about its next move...
         </div>
       </div>
     </div>
@@ -525,7 +525,7 @@
         document.getElementById("timeout-actions").style.display = "block";
         document.getElementById("continue-button").style.display = "none";
         displayLogMessage(
-          "Game ended by player. Choose to continue or reset.",
+          "Game ended by player. Click Reset to start a new game.",
           "error"
         );
       }
@@ -564,17 +564,12 @@
               const chess = new Chess(game.fen());
               var opponentMoveObj = chess.move(opponentMove);
               if (opponentMoveObj === null) {
-                displayLogMessage(
-                  "LLM responded with illegal move: " + opponentMove,
-                  "error"
-                );
+                // Illegal suggestion: retry quietly. The server logs it, and
+                // the waiting message stays up until a legal move arrives.
                 sendMoveToServer(move, "repeat", sanMove);
                 return;
               }
-              displayLogMessage(
-                "LLM responded with move: " + opponentMove,
-                "success"
-              );
+              displayLogMessage("AI responded with " + opponentMove, "success");
               game.load(chess.fen());
               board1.position(chess.fen());
               updateScoreboard(response.accumulative, response.absolute);
