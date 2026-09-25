@@ -370,45 +370,70 @@
         document.getElementById("white-score").textContent = "0";
         var apiKey = document.getElementById("api-key-input").value;
         var model = selectedModel;
+        var startBtn = document.getElementById("start-button");
+
+        // gameStarted is only set once the three requests below have all come
+        // back, and /check-api-key waits on a real completion call. Hold the
+        // button inert for the whole chain so a second click can't start a
+        // second game with a second countdown.
+        startBtn.disabled = true;
+
+        function releaseButton(message) {
+          startBtn.disabled = false;
+          alert(message);
+        }
+
         $.post(
           "/check-api-key",
           { api_key: apiKey, model: model },
           function (response) {
-            if (response.status === "success") {
-              $.post(
-                "/set-api-key",
-                { api_key: apiKey, model: model },
-                function (response) {
-                  if (response.status === "success") {
-                    $.getJSON("/new-session", function (response) {
-                      if (response.session_id) {
-                        gameStarted = true;
-                        startCountdown();
-                        document.getElementById("start-button").innerHTML =
-                          "End";
-                      } else {
-                        alert("Failed to start the game");
-                      }
-                    });
-                  } else {
-                    alert("Failed to set the API key and model");
-                  }
-                }
-              );
-            } else {
-              alert("Invalid API key. Please check your OpenAI API key.");
+            if (response.status !== "success") {
+              releaseButton("Invalid API key. Please check your OpenAI API key.");
+              return;
             }
+            $.post(
+              "/set-api-key",
+              { api_key: apiKey, model: model },
+              function (response) {
+                if (response.status !== "success") {
+                  releaseButton("Failed to set the API key and model");
+                  return;
+                }
+                $.getJSON("/new-session", function (response) {
+                  if (!response.session_id) {
+                    releaseButton("Failed to start the game");
+                    return;
+                  }
+                  gameStarted = true;
+                  startCountdown();
+                  startBtn.innerHTML = "End";
+                  startBtn.disabled = false;
+                }).fail(function () {
+                  releaseButton("Failed to start the game");
+                });
+              }
+            ).fail(function () {
+              releaseButton("Failed to set the API key and model");
+            });
           }
-        );
+        ).fail(function () {
+          releaseButton("Could not reach the server to check the API key.");
+        });
       }
 
       function startCountdown() {
+        // Drop any interval still running from an earlier start. Without this a
+        // second call leaks the first interval: gameTimer only holds the newest
+        // handle, so the older one never reaches its own clearInterval and keeps
+        // decrementing past zero.
+        clearInterval(gameTimer);
         timeRemaining = 120;
         timerExpired = false;
         updateTimerDisplay();
 
         gameTimer = setInterval(function () {
           timeRemaining--;
+          if (timeRemaining < 0) timeRemaining = 0;
           updateTimerDisplay();
           if (timeRemaining <= 0) {
             clearInterval(gameTimer);
