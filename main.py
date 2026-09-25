@@ -1,10 +1,17 @@
-from engine.engine import ChessEngine
+from engine.engine import ChessEngine, log_openai_usage
 import openai
 from flask import Flask, render_template, request, session, jsonify
 from flask_cors import CORS
+from datetime import datetime
+import logging
 import uuid
 import pickle
 import os
+import sys
+
+# Checked before any setup below, so a direct run doesn't create a log file.
+if __name__ == "__main__":
+    sys.exit("Don't run main.py directly. Start the app with:\n\n    flask --app main run\n\nAdd --debug for debug mode.")
 
 # --- Local in-memory storage for demo ---
 instances = {}
@@ -40,6 +47,67 @@ app = Flask(__name__, template_folder=".")
 app.secret_key = "sf43d5f4s394jfe2dm903"
 CORS(app)
 
+# --- Logging ---
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+logger = logging.getLogger("llmchess")
+
+
+def setup_logging(debug):
+    """Send the "llmchess" loggers to logs/YYYY-MM-DD_HH-MM-SS.log.
+
+    Returns True in the process that owns the run's log file. Under
+    `flask run --debug` the reloader imports this module once in a watcher
+    process and again in every server process it spawns; the first import picks
+    the file name and passes it down through the environment, so one run writes
+    one file and its startup lines are logged once.
+    """
+    log_file = os.environ.get("LLMCHESS_LOG_FILE")
+    owner = log_file is None
+    if owner:
+        name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log"
+        log_file = os.path.join(LOG_DIR, name)
+        os.environ["LLMCHESS_LOG_FILE"] = log_file
+
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        handler = logging.FileHandler(log_file, encoding="utf-8")
+    except OSError:
+        # App Engine's filesystem is read-only outside /tmp. Log to stderr there
+        # so the app still starts and the lines reach Cloud Logging.
+        handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s [%(name)s]",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG if debug else logging.INFO)
+    # Keep these lines (the API key among them) out of any handlers something
+    # else attaches to the root logger.
+    logger.propagate = False
+    return owner
+
+
+DEBUG = app.debug
+
+if setup_logging(DEBUG):
+    logger.info("Server starting (debug=%s)", DEBUG)
+    logger.debug(
+        "Using OpenAI API key: %s", os.environ.get("OPENAI_API_KEY", "<not set>")
+    )
+
+# Sessions whose end is already logged, so a game that ends in checkmate and is
+# then reset or closed isn't logged as ending twice.
+ended_sessions = set()
+
+
+def log_game_end(session_id, reason):
+    if session_id in ended_sessions:
+        return
+    ended_sessions.add(session_id)
+    logger.info("Game ended: session=%s reason=%s", session_id, reason)
+
 
 @app.route("/new-session")
 def new_session():
@@ -48,14 +116,26 @@ def new_session():
     api_key = session.get("api_key")
     model = session.get("model")
     store_instance(session_id, ChessEngine(api_key, model, session_id))
-    print(f"New session created: {session_id}, model: {model}")
+    logger.info("Game started: session=%s model=%s", session_id, model)
     return {"session_id": session_id}
 
 
-@app.route("/delete-session")
+@app.route("/end-game", methods=["POST"])
+def end_game():
+    session_id = session.get("session_id")
+    if session_id not in instances:
+        return jsonify({"error": "Invalid session"}), 400
+    log_game_end(session_id, request.form.get("reason", "unknown"))
+    return {"status": "success"}
+
+
+# POST is for navigator.sendBeacon, which the page sends when its tab closes.
+@app.route("/delete-session", methods=["GET", "POST"])
 def delete_session():
     session_id = session.get("session_id")
     if get_instance(session_id) is not None:
+        log_game_end(session_id, request.args.get("reason", "session deleted"))
+        ended_sessions.discard(session_id)
         delete_instance(session_id)
         session.clear()
         return {"status": "success"}
@@ -125,6 +205,7 @@ def check_api_key():
             max_completion_tokens=5,
         )
         print("API key valid, response:", response)  # debug
+        log_openai_usage(response, "key check")
         validated_models.add(model)
         return {"status": "success"}
     except Exception as e:
@@ -140,7 +221,3 @@ def check_api_key():
 #         return {"status": "success"}
 #     except openai.error.AuthenticationError:
 #         return {"status": "failure"}
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=81, debug=True)

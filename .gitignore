@@ -11,3 +11,6 @@ wheels/
 .venv
 .*shinit
 .DS_Store
+
+# Runtime logs (debug-mode logs contain the OpenAI API key)
+logs/

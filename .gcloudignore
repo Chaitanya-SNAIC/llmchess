@@ -17,3 +17,5 @@
 __pycache__/
 # Ignored by the build system
 /setup.cfg
+# Local runtime logs (debug-mode logs contain the OpenAI API key)
+logs/

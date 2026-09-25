@@ -3,8 +3,28 @@ import chess
 import chess.pgn
 import io
 from stockfish import Stockfish
+import logging
 import os
 import platform
+
+logger = logging.getLogger("llmchess.engine")
+
+
+def log_openai_usage(completion, purpose, session_id=None):
+    """Log the token counts OpenAI reports for one chat completion."""
+    usage = completion.usage
+    if usage is None:
+        logger.info(
+            "OpenAI call (%s): model=%s session=%s, no usage reported",
+            purpose, completion.model, session_id,
+        )
+        return
+    logger.info(
+        "OpenAI usage (%s): model=%s input_tokens=%d output_tokens=%d session=%s",
+        purpose, completion.model,
+        usage.prompt_tokens, usage.completion_tokens,
+        session_id,
+    )
 
 
 class ChessEngine:
@@ -179,6 +199,7 @@ class ChessEngine:
 
     def get_gpt_response(self, messages):
         completion = openai.chat.completions.create(model=self.model, messages=messages)
+        log_openai_usage(completion, "move", self.session_id)
         return completion.choices[0].message.content.strip()
 
     def evaluate_position(self):

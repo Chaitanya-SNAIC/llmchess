@@ -359,6 +359,7 @@
           status = "Game over, insufficient material";
         else if (game.half_moves >= 100) status = "Game over, 50-move rule";
         if (status !== "") {
+          notifyGameEnd(status);
           displayLogMessage(status, "error");
           document.getElementById("timeout-actions").style.display = "block";
           document.getElementById("continue-button").style.display = "none"; // no continue for natural game end
@@ -475,7 +476,7 @@
           clearInterval(gameTimer);
           document.getElementById("timeout-actions").style.display = "none";
           document.getElementById("timer").textContent = "02:00";
-          $.getJSON("/delete-session", function (response) {
+          $.getJSON("/delete-session?reason=reset", function (response) {
             if (response.status === "success") {
               location.reload();
             } else {
@@ -520,6 +521,7 @@
       function endGame() {
         clearInterval(gameTimer);
         timerExpired = true; // disable moves
+        notifyGameEnd("ended by player");
         document.getElementById("timeout-actions").style.display = "block";
         document.getElementById("continue-button").style.display = "none";
         displayLogMessage(
@@ -528,9 +530,15 @@
         );
       }
 
+      // Games that end in the browser (checkmate, draw, the End button) never
+      // otherwise reach the server, so report them for the server log.
+      function notifyGameEnd(reason) {
+        $.post("/end-game", { reason: reason });
+      }
+
       window.addEventListener("beforeunload", function () {
         if (gameStarted) {
-          navigator.sendBeacon("/delete-session");
+          navigator.sendBeacon("/delete-session?reason=page-closed");
         }
       });
 
