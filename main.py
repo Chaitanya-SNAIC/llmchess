@@ -203,6 +203,7 @@ def check_api_key():
             model=model,
             messages=[{"role": "system", "content": "Hello"}],
             max_completion_tokens=5,
+            reasoning_effort="none",
         )
         print("API key valid, response:", response)  # debug
         log_openai_usage(response, "key check")

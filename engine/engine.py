@@ -92,7 +92,9 @@ class ChessEngine:
             move = response.split("Best move:")[1]
         except IndexError:
             move = response
-        move = move.replace("...", "").replace("1.", "").replace(".", "").replace(" ", "")
+        # "…" is the single-character ellipsis, which the model sometimes writes
+        # in place of "..." before a Black move (e.g. "… c5").
+        move = move.replace("...", "").replace("…", "").replace("1.", "").replace(".", "").replace(" ", "")
         return move[:10]
 
     def evaluate_move_quality(self, san_move):
@@ -209,7 +211,11 @@ class ChessEngine:
         return move_san, accumulative, absolute
 
     def get_gpt_response(self, messages):
-        completion = openai.chat.completions.create(model=self.model, messages=messages)
+        # Thinking off: with the model's default effort, hidden reasoning was
+        # most of each move's output tokens and wait time.
+        completion = openai.chat.completions.create(
+            model=self.model, messages=messages, reasoning_effort="none"
+        )
         log_openai_usage(completion, "move", self.session_id)
         return completion.choices[0].message.content.strip()
 
