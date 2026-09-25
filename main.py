@@ -48,7 +48,7 @@ def new_session():
     api_key = session.get("api_key")
     model = session.get("model")
     store_instance(session_id, ChessEngine(api_key, model, session_id))
-    print(f"New session created: {session_id}, session content: {dict(session)}")
+    print(f"New session created: {session_id}, model: {model}")
     return {"session_id": session_id}
 
 
@@ -103,13 +103,21 @@ def set_api_key():
     return {"status": "success"}
 
 
+# Models already confirmed to work with the server's key. The key comes from the
+# environment and can't change while the process runs, so one successful check
+# per model is enough; repeating it made every Start wait on an OpenAI call.
+validated_models = set()
+
+
 @app.route("/check-api-key", methods=["POST"])
 def check_api_key():
     api_key = os.environ["OPENAI_API_KEY"]
     # api_key = request.form.get("api_key")
     model = request.form.get("model")
     openai.api_key = api_key
-    print(f"Checking API key: {api_key}, model: {model}")  # debug
+    if model in validated_models:
+        return {"status": "success"}
+    print(f"Checking API key for model: {model}")  # debug
     try:
         response = openai.chat.completions.create(
             model=model,
@@ -117,6 +125,7 @@ def check_api_key():
             max_completion_tokens=5,
         )
         print("API key valid, response:", response)  # debug
+        validated_models.add(model)
         return {"status": "success"}
     except Exception as e:
         print("API key check failed:", e)  # debug

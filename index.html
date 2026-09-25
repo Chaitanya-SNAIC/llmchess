@@ -373,13 +373,15 @@
         var startBtn = document.getElementById("start-button");
 
         // gameStarted is only set once the three requests below have all come
-        // back, and /check-api-key waits on a real completion call. Hold the
-        // button inert for the whole chain so a second click can't start a
-        // second game with a second countdown.
+        // back, and the first start for a model waits on a real completion
+        // call. Hold the button inert for the whole chain so a second click
+        // can't start a second game with a second countdown.
         startBtn.disabled = true;
+        startBtn.innerHTML = "Starting…";
 
         function releaseButton(message) {
           startBtn.disabled = false;
+          startBtn.innerHTML = "Start";
           alert(message);
         }
 

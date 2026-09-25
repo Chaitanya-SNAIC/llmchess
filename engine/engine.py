@@ -32,7 +32,6 @@ class ChessEngine:
         self.model = model
         self.session_id = session_id
         self.retry_count = 0
-        self._init_stockfish(stockfish_path)
 
         if platform.system() == "Windows":
             exec_file_name = "stockfish-windows-x86-64-avx2.exe"
